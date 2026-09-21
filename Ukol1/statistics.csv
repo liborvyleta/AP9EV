@@ -1,0 +1,7 @@
+problem,dim,best,worst,mean,median,std
+OneMax,10,10,10,10.0,10.0,0.0
+OneMax,30,30,30,30.0,30.0,0.0
+OneMax,100,100,100,100.0,100.0,0.0
+LeadingOnes,10,10,10,10.0,10.0,0.0
+LeadingOnes,30,30,29,29.9,30.0,0.3
+LeadingOnes,100,80,55,71.9,76.0,8.263776376451629
