@@ -16,11 +16,11 @@ Experiment:
 
 from __future__ import annotations
 
+import csv
 from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 FitnessFunc = Callable[[np.ndarray], int]
 SelectorFunc = Callable[[np.ndarray, np.ndarray, np.random.Generator], np.ndarray]
@@ -402,10 +402,13 @@ def main() -> None:
     plt.savefig(CONVERGENCE_PLOT_PATH, dpi=150)
     print(f"\nGraf uložen do {CONVERGENCE_PLOT_PATH}")
 
-    stats_df = pd.DataFrame(all_stats)
-    stats_df.to_csv(STATISTICS_CSV_PATH, index=False)
+    fieldnames = ["problem", "dim", "best", "worst", "mean", "median", "std"]
+    with open(STATISTICS_CSV_PATH, "w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_stats)
     print(f"Statistiky uloženy do {STATISTICS_CSV_PATH}")
-    print(stats_df.to_string(index=False))
+    print("\n".join(", ".join(f"{key}={row[key]}" for key in fieldnames) for row in all_stats))
 
 
 if __name__ == "__main__":
