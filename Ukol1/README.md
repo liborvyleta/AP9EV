@@ -13,16 +13,16 @@ vždy 10 nezávislých běhů s rozpočtem 100×D ohodnocení účelové funkce.
   změny do nové populace.
 - **Selekce rodičů**: `rank` (pořadová) nebo `roulette` (ruletová) — volitelné
   parametrem `selection`.
-- **Křížení**: jednobodové (`one_point_crossover`) — náhodný bod dělení,
-  výměna prvních částí obou rodičů → 2 potomci.
+- **Křížení**: v hlavních experimentech jednobodové (`one_point_crossover`) —
+  náhodný bod dělení a výměna částí rodičů. Pro srovnání parametrů je dostupné
+  také dvoubodové křížení.
 - **Mutace**: bitová inverze každého bitu s pravděpodobností `p_mut`
-  (výchozí `1/D`, což odpovídá doporučenému rozmezí ~0.5–1 % pro D okolo
-  100–200).
+  (výchozí 1 % pro všechny dimenze; ve srovnání se testuje také 0,5 %).
 - **Cyklus**: elitní jedinci + opakovaná selekce → křížení → mutace, dokud
   nová populace nedosáhne velikosti `pop_size` (výchozí 30).
-- **Rozpočet**: běh se zastaví po dosažení `100 × D` ohodnocení účelové
-  funkce; sleduje se průběžně nejlepší nalezené řešení (konvergenční
-  křivka).
+- **Rozpočet**: běh provede přesně `100 × D` ohodnocení účelové funkce.
+  Pokud zbývá méně než celá generace, vyhodnotí se jen potřebný počet jedinců.
+  Sleduje se průběžně nejlepší nalezené řešení.
 
 Konvergenční křivky z jednotlivých běhů jsou interpolovány na společnou osu
 počtu ohodnocení a zprůměrovány přes 10 běhů (`run_experiment`).
@@ -38,8 +38,10 @@ Vygeneruje:
   pro obě úlohy a všechny tři dimenze,
 - `statistics.csv` — základní statistiky finálního fitness přes 10 běhů
   (nejlepší, nejhorší, průměr, medián, směrodatná odchylka).
+- `parameter_comparison.csv` — srovnání šesti nastavení na náročném případu
+  LeadingOnes D=100, každé přes 10 běhů.
 
-## Výsledky (výchozí nastavení: pop=30, elitismus 15 %, pořadová selekce, p_mut=1/D)
+## Výsledky (pop=30, elitismus 15 %, pořadová selekce, jednobodové křížení, p_mut=1 %)
 
 | problem      | D   | best | worst | mean  | median | std   |
 |--------------|-----|------|-------|-------|--------|-------|
@@ -47,10 +49,31 @@ Vygeneruje:
 | OneMax       | 30  | 30   | 30    | 30.0  | 30.0   | 0.000 |
 | OneMax       | 100 | 100  | 100   | 100.0 | 100.0  | 0.000 |
 | LeadingOnes  | 10  | 10   | 10    | 10.0  | 10.0   | 0.000 |
-| LeadingOnes  | 30  | 30   | 29    | 29.9  | 30.0   | 0.300 |
-| LeadingOnes  | 100 | 80   | 55    | 71.9  | 76.0   | 8.264 |
+| LeadingOnes  | 30  | 30   | 22    | 27.9  | 30.0   | 3.239 |
+| LeadingOnes  | 100 | 80   | 55    | 71.8  | 76.0   | 8.352 |
 
-## Diskuse nastavení parametrů
+## Porovnání parametrů
+
+Parametry byly porovnány na LeadingOnes D=100 s rozpočtem 10 000 evaluací a
+10 běhy pro každou konfiguraci. Vždy se měnila jedna vlastnost vůči základnímu
+nastavení; křížení bylo testováno jednobodové i dvoubodové.
+
+| konfigurace | populace | elitismus | selekce | křížení | mutace | průměr | std |
+|-------------|---------:|----------:|---------|---------|-------:|-------:|----:|
+| základní | 30 | 15 % | rank | jednobodové | 1 % | 71,8 | 8,35 |
+| větší populace | 60 | 15 % | rank | jednobodové | 1 % | 56,4 | 6,68 |
+| nižší elitismus | 30 | 10 % | rank | jednobodové | 1 % | 69,7 | 5,81 |
+| ruletová selekce | 30 | 15 % | roulette | jednobodové | 1 % | 67,3 | 7,46 |
+| nižší mutace | 30 | 15 % | rank | jednobodové | 0,5 % | 58,7 | 9,96 |
+| dvoubodové křížení | 30 | 15 % | rank | dvoubodové | 1 % | 79,6 | 8,06 |
+
+V tomto omezeném srovnání vyšlo nejlépe dvoubodové křížení; hlavní požadované
+experimenty ale zůstávají s jednobodovým křížením podle zadání. Populace 30,
+elitismus 15 %, pořadová selekce a mutace 1 % jsou rozumný výchozí kompromis
+pro základní běhy. Výsledky jsou z pouhých 10 běhů na jedné dimenzi, proto je
+ber jako orientační, ne jako univerzální optimum.
+
+## Diskuse výsledků
 
 - **OneMax** je pro GA snadná úloha (fitness je aditivní, separabilní) —
   s daným nastavením se optimum spolehlivě najde ve všech dimenzích, a to i
@@ -61,14 +84,9 @@ Vygeneruje:
   ohodnocení GA nestíhá dojít k optimu — to odpovídá teoretické složitosti
   LeadingOnes (řádově O(D²) ohodnocení pro (1+1)-EA), zatímco máme k
   dispozici jen O(100·D).
-- Elitismus 15 % a pořadová selekce (rank) dávaly stabilnější a mírně
-  rychlejší konvergenci než ruletová selekce, protože rank selekce méně
-  trpí "dominancí" jedinců s výrazně vyšším fitness v raných fázích (u
-  LeadingOnes se fitness soustředí na nízkých hodnotách, ruleta pak vybírá
-  téměř náhodně).
-- Pravděpodobnost mutace `1/D` se v testech ukázala jako rozumný kompromis
-  — nižší hodnoty (blíže 0.5 %) zpomalují explorate u LeadingOnes, vyšší
-  (blíže 1 %) zvyšují riziko destrukce dobrých řešení u velkého D.
-- Pro experimentování lze v `main()` v `ga.py` snadno měnit `pop_size`,
-  `elite_frac`, `selection` a `p_mut` a porovnávat výsledné konvergenční
-  křivky a statistiky.
+- V konkrétním srovnání na LeadingOnes D=100 dosáhla pořadová selekce vyššího
+  průměru než ruletová. Vyšší velikost populace ani mutace 0,5 % v tomto
+  rozpočtu nepomohly.
+- Mutace 1 % odpovídá přímo doporučenému rozmezí v zadání a používá se stejně
+  pro všechna D; nejde o dřívější nastavení `1/D`, které pro nižší dimenze
+  znamenalo podstatně vyšší pravděpodobnost mutace.

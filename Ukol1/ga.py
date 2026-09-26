@@ -24,17 +24,23 @@ import numpy as np
 
 FitnessFunc = Callable[[np.ndarray], int]
 SelectorFunc = Callable[[np.ndarray, np.ndarray, np.random.Generator], np.ndarray]
+CrossoverFunc = Callable[
+    [np.ndarray, np.ndarray, np.random.Generator], tuple[np.ndarray, np.ndarray]
+]
 
 # Výchozí parametry GA (viz README pro zdůvodnění).
 DEFAULT_POP_SIZE = 30
 DEFAULT_ELITE_FRACTION = 0.15
 DEFAULT_SELECTION = "rank"
+DEFAULT_CROSSOVER = "one_point"
+DEFAULT_MUTATION_PROBABILITY = 0.01
 DIMENSIONS = (10, 30, 100)
 PROBLEM_NAMES = ("OneMax", "LeadingOnes")
 RUNS_PER_EXPERIMENT = 10
 EVAL_BUDGET_MULTIPLIER = 100
 CONVERGENCE_PLOT_PATH = "convergence.png"
 STATISTICS_CSV_PATH = "statistics.csv"
+PARAMETER_COMPARISON_CSV_PATH = "parameter_comparison.csv"
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +183,27 @@ def one_point_crossover(
     return child1, child2
 
 
+def two_point_crossover(
+    parent1: np.ndarray, parent2: np.ndarray, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
+    """Provede dvoubodové křížení dvou rodičů."""
+    points = np.sort(rng.choice(np.arange(1, len(parent1)), size=2, replace=False))
+    first_point, second_point = points
+    child1 = np.concatenate(
+        [parent1[:first_point], parent2[first_point:second_point], parent1[second_point:]]
+    )
+    child2 = np.concatenate(
+        [parent2[:first_point], parent1[first_point:second_point], parent2[second_point:]]
+    )
+    return child1, child2
+
+
+CROSSOVERS: dict[str, CrossoverFunc] = {
+    "one_point": one_point_crossover,
+    "two_point": two_point_crossover,
+}
+
+
 def mutate(
     individual: np.ndarray, mutation_probability: float, rng: np.random.Generator
 ) -> np.ndarray:
@@ -207,6 +234,7 @@ def _build_next_generation(
     pop_size: int,
     n_elite: int,
     selector: SelectorFunc,
+    crossover: CrossoverFunc,
     mutation_probability: float,
     rng: np.random.Generator,
 ) -> np.ndarray:
@@ -231,7 +259,7 @@ def _build_next_generation(
     while len(new_population) < pop_size:
         parent1 = selector(population, fitness, rng)
         parent2 = selector(population, fitness, rng)
-        child1, child2 = one_point_crossover(parent1, parent2, rng)
+        child1, child2 = crossover(parent1, parent2, rng)
         child1 = mutate(child1, mutation_probability, rng)
         child2 = mutate(child2, mutation_probability, rng)
         new_population.append(child1)
@@ -247,8 +275,9 @@ def run_ga(
     max_evals: int,
     pop_size: int = DEFAULT_POP_SIZE,
     elite_fraction: float = DEFAULT_ELITE_FRACTION,
-    mutation_probability: float | None = None,
+    mutation_probability: float = DEFAULT_MUTATION_PROBABILITY,
     selection: str = DEFAULT_SELECTION,
+    crossover_type: str = DEFAULT_CROSSOVER,
     seed: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Provede jeden běh genetického algoritmu.
@@ -259,8 +288,9 @@ def run_ga(
         max_evals: Maximální počet ohodnocení účelové funkce.
         pop_size: Velikost populace.
         elite_fraction: Podíl nejlepších jedinců přenesených beze změny.
-        mutation_probability: Pravděpodobnost inverze bitu; `None` použije 1/D.
+        mutation_probability: Pravděpodobnost inverze jednoho bitu.
         selection: Typ selekce, `"rank"` nebo `"roulette"`.
+        crossover_type: Typ křížení, `"one_point"` nebo `"two_point"`.
         seed: Seed generátoru náhodných čísel pro reprodukovatelnost.
 
     Returns:
@@ -268,11 +298,12 @@ def run_ga(
         nalezeného fitness v závislosti na počtu ohodnocení.
     """
     rng = np.random.default_rng(seed)
-    if mutation_probability is None:
-        mutation_probability = 1.0 / dim  # doporučené rozmezí ~0.5-1 % pro D~100-200
-
     selector = SELECTORS[selection]
+    crossover = CROSSOVERS[crossover_type]
     n_elite = max(1, round(elite_fraction * pop_size))
+
+    if max_evals < pop_size:
+        raise ValueError("max_evals musí být alespoň velikost počáteční populace")
 
     population = init_population(pop_size, dim, rng)
     fitness = evaluate(population, fitness_func)
@@ -283,11 +314,19 @@ def run_ga(
     best_history = [best_so_far]
 
     while evals < max_evals:
+        generation_size = min(pop_size, max_evals - evals)
         population = _build_next_generation(
-            population, fitness, pop_size, n_elite, selector, mutation_probability, rng
+            population,
+            fitness,
+            generation_size,
+            min(n_elite, generation_size),
+            selector,
+            crossover,
+            mutation_probability,
+            rng,
         )
         fitness = evaluate(population, fitness_func)
-        evals += pop_size
+        evals += len(population)
         best_so_far = max(best_so_far, fitness.max())
 
         evals_history.append(evals)
@@ -349,6 +388,88 @@ def run_experiment(
     return common_evals, all_curves_array, stats
 
 
+def compare_parameters() -> list[dict[str, object]]:
+    """Porovná šest nastavení na náročném LeadingOnes problému D=100."""
+    configurations: tuple[tuple[str, dict[str, object]], ...] = (
+        (
+            "baseline",
+            {
+                "pop_size": 30,
+                "elite_fraction": 0.15,
+                "selection": "rank",
+                "crossover_type": "one_point",
+                "mutation_probability": 0.01,
+            },
+        ),
+        (
+            "population_60",
+            {
+                "pop_size": 60,
+                "elite_fraction": 0.15,
+                "selection": "rank",
+                "crossover_type": "one_point",
+                "mutation_probability": 0.01,
+            },
+        ),
+        (
+            "elite_10pct",
+            {
+                "pop_size": 30,
+                "elite_fraction": 0.10,
+                "selection": "rank",
+                "crossover_type": "one_point",
+                "mutation_probability": 0.01,
+            },
+        ),
+        (
+            "roulette",
+            {
+                "pop_size": 30,
+                "elite_fraction": 0.15,
+                "selection": "roulette",
+                "crossover_type": "one_point",
+                "mutation_probability": 0.01,
+            },
+        ),
+        (
+            "mutation_0.5pct",
+            {
+                "pop_size": 30,
+                "elite_fraction": 0.15,
+                "selection": "rank",
+                "crossover_type": "one_point",
+                "mutation_probability": 0.005,
+            },
+        ),
+        (
+            "two_point",
+            {
+                "pop_size": 30,
+                "elite_fraction": 0.15,
+                "selection": "rank",
+                "crossover_type": "two_point",
+                "mutation_probability": 0.01,
+            },
+        ),
+    )
+
+    comparison_rows = []
+    for name, settings in configurations:
+        _, _, stats = run_experiment(
+            "LeadingOnes", 100, n_runs=RUNS_PER_EXPERIMENT, **settings
+        )
+        comparison_rows.append(
+            {
+                "configuration": name,
+                "problem": "LeadingOnes",
+                "dim": 100,
+                **settings,
+                **stats,
+            }
+        )
+    return comparison_rows
+
+
 def _plot_convergence(
     ax: plt.Axes, evals: np.ndarray, curves: np.ndarray, problem: str, dim: int
 ) -> None:
@@ -381,7 +502,8 @@ def main() -> None:
         "pop_size": DEFAULT_POP_SIZE,
         "elite_fraction": DEFAULT_ELITE_FRACTION,
         "selection": DEFAULT_SELECTION,
-        "mutation_probability": None,
+        "crossover_type": DEFAULT_CROSSOVER,
+        "mutation_probability": DEFAULT_MUTATION_PROBABILITY,
     }
 
     all_stats = []
@@ -409,6 +531,32 @@ def main() -> None:
         writer.writerows(all_stats)
     print(f"Statistiky uloženy do {STATISTICS_CSV_PATH}")
     print("\n".join(", ".join(f"{key}={row[key]}" for key in fieldnames) for row in all_stats))
+
+    comparison_rows = compare_parameters()
+    comparison_fields = [
+        "configuration",
+        "problem",
+        "dim",
+        "pop_size",
+        "elite_fraction",
+        "selection",
+        "crossover_type",
+        "mutation_probability",
+        "best",
+        "worst",
+        "mean",
+        "median",
+        "std",
+    ]
+    with open(
+        PARAMETER_COMPARISON_CSV_PATH, "w", newline="", encoding="utf-8"
+    ) as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=comparison_fields)
+        writer.writeheader()
+        writer.writerows(comparison_rows)
+    print(f"\nPorovnání parametrů uloženo do {PARAMETER_COMPARISON_CSV_PATH}")
+    for row in comparison_rows:
+        print(f"{row['configuration']}: mean={row['mean']:.2f}, std={row['std']:.2f}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,7 @@
+configuration,problem,dim,pop_size,elite_fraction,selection,crossover_type,mutation_probability,best,worst,mean,median,std
+baseline,LeadingOnes,100,30,0.15,rank,one_point,0.01,80,55,71.8,76.0,8.35224520712844
+population_60,LeadingOnes,100,60,0.15,rank,one_point,0.01,68,46,56.4,57.0,6.681317235396026
+elite_10pct,LeadingOnes,100,30,0.1,rank,one_point,0.01,79,62,69.7,69.5,5.814636704042653
+roulette,LeadingOnes,100,30,0.15,roulette,one_point,0.01,80,55,67.3,66.5,7.457211275000863
+mutation_0.5pct,LeadingOnes,100,30,0.15,rank,one_point,0.005,78,42,58.7,60.5,9.960421677820674
+two_point,LeadingOnes,100,30,0.15,rank,two_point,0.01,96,69,79.6,80.0,8.064738061462382
