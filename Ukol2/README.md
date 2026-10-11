@@ -22,6 +22,12 @@ neohodnocuje).
 - **Fixed-Point**: 1 bit znaménko, 10 bitů celá část, 21 bitů desetinná část.
 - **BCD**: 8 číslic po 4 bitech = znaménko (číslice ≥ 5 → záporné), 3 celé a
   4 desetinné číslice; nibble > 9 se bere modulo 10.
+- **FixedPoint-tuned / BCD-tuned**: stejná kódování, ale dělení bitů (číslic)
+  na celou a desetinnou část přizpůsobené rozsahu úlohy: Fixed-Point má
+  1 + ⌈log₂(max|mez| + 1)⌉ bitů pro znaménko a celou část (Sphere 3, Rosenbrock 4,
+  Schwefel 9 bitů celé části), BCD tolik celých číslic, kolik má max|mez|
+  (1, 2, 3). Původní varianty (10 bitů / 3 číslice celé části pro všechny
+  úlohy) zůstávají jako základní srovnání; všech 7 variant má 32 bitů na dimenzi.
 - Binární varianty: křížení přes celý 320bitový chromozom, bit-flip mutace s
   p = 1/320.
 - **Real-Gauss**: křížení mezi dimenzemi, mutace `x + N(0, sigma²)` každého genu
@@ -43,16 +49,22 @@ Vytvoří `statistics.csv`, `sigma_sweep.csv`, `convergence.png`.
 | Sphere | Binary-IEEE754 | 1.83e-79 | 1.57e-78 | 1.62e-78 |
 | Sphere | Binary-FixedPoint | 78.6 | 163 | 36.7 |
 | Sphere | Binary-BCD | 52.5 | 97.4 | 29.2 |
+| Sphere | Binary-FixedPoint-tuned | 3.17e-08 | 5.04e-07 | 6.68e-07 |
+| Sphere | Binary-BCD-tuned | 4.18e-06 | 0.472 | 1.3 |
 | Sphere | Real-Gauss | 0.000169 | 0.000635 | 0.000386 |
 | Sphere | Real-Uniform | 0.00949 | 0.025 | 0.0179 |
 | Rosenbrock | Binary-IEEE754 | 8.76 | 8.94 | 0.0664 |
 | Rosenbrock | Binary-FixedPoint | 3.23e+05 | 5.38e+05 | 1.16e+05 |
 | Rosenbrock | Binary-BCD | 2.66e+05 | 3.43e+05 | 6.81e+04 |
+| Rosenbrock | Binary-FixedPoint-tuned | 5.3 | 63.3 | 53.7 |
+| Rosenbrock | Binary-BCD-tuned | 1.5e+03 | 5.12e+04 | 3.5e+04 |
 | Rosenbrock | Real-Gauss | 4.34 | 33.4 | 71.7 |
 | Rosenbrock | Real-Uniform | 12.6 | 48.5 | 30.8 |
 | Schwefel | Binary-IEEE754 | 2.03e+03 | 2.27e+03 | 139 |
 | Schwefel | Binary-FixedPoint | 373 | 967 | 376 |
 | Schwefel | Binary-BCD | 186 | 544 | 236 |
+| Schwefel | Binary-FixedPoint-tuned | 212 | 524 | 211 |
+| Schwefel | Binary-BCD-tuned | 186 | 544 | 236 |
 | Schwefel | Real-Gauss | 119 | 386 | 176 |
 | Schwefel | Real-Uniform | 5.82 | 15.5 | 6.37 |
 
@@ -76,42 +88,59 @@ společné výchozí nastavení.
 ## Zdůvodnění výsledků
 
 Aby zdůvodnění nebylo jen odhad, změřil jsem, jak vypadají hodnoty dekódované
-z náhodných bitových řetězců (20 000 × 10 genů; reprodukovatelné voláním
-dekodérů z `ga_real.py`):
+z náhodných bitových řetězců (20 000 × 10 genů, `decode_*` z `ga_real.py`):
 
-| Kódování   | oříznuto na hranici (Sphere/Rosenbrock) | \|x\| < 10⁻³ | oříznuto (Schwefel) | x ∈ (300; 500) (Schwefel) |
-|------------|------|------|------|-------|
-| IEEE 754   | 49 % | 46 % | 46 % | 0,2 % |
-| Fixed-Point| 99 % | 0 %  | 51 % | 9,7 % |
-| BCD        | 99 % | 0 %  | 38 % | 15,5 % |
+| Kódování         | oříznuto na hranici: Sphere / Rosenbrock / Schwefel | \|x\| < 10⁻³ | x ∈ (300; 500) (Schwefel) |
+|------------------|------------------------|------|-------|
+| IEEE 754         | 49 % / 49 % / 46 %     | 46 % | 0,2 % |
+| Fixed-Point      | 99 % / 99 % / 51 %     | 0 %  | 9,7 % |
+| BCD              | 99 % / 99 % / 38 %     | 0 %  | 15,5 % |
+| Fixed-Point-tuned| 36 % / 53 % / 2 %      | 0 %  | 19,5 % |
+| BCD-tuned        | 36 % / 89 % / 38 %     | 0 %  | 15,5 % |
 
-**Sphere.** Vyhrává IEEE 754 (~10⁻⁷⁸), ale kvůli vlastnosti kódování, ne kvůli
-kvalitě GA: v float32 vede ~46 % náhodných genů na hodnotu téměř nulovou
+(BCD-tuned pro Schwefel je shodné s BCD, protože 3 celé číslice jsou tam už
+původně správně.)
+
+**Ověření IEEE 754 na Rosenbrocku.** U všech 10 běhů jsem vypsal nejlepší
+nalezené řešení: všechny geny jsou v absolutní hodnotě ≤ 0,13 (typicky
+10⁻² až 10⁻³⁸), tedy f ≈ f(0,…,0) = 9. GA se za ~300 ohodnocení dostane do
+okolí nuly (kam kódování samo „táhne“) a odtud se nedokáže dostat k optimu
+(1,…,1): k tomu by bylo potřeba přesně trefit hodnotu 1 (v float32 je to
+konkrétní exponent + nulová mantisa) ve všech 10 dimenzích najednou.
+
+**Vliv přizpůsobení formátu rozsahu (Fixed-Point, BCD).** Původní formát
+(10 bitů celé části, resp. 3 celé číslice) je pro rozsahy ±5,12 a [-5, 10]
+příliš široký: 99 % náhodných genů se ořízne na hranici, počáteční populace
+je prakticky v rozích a horní bity (znaménko, celá část) mění hodnotu skokem,
+takže mutace a jednobodové křížení dobrá řešení rozbíjejí (Hammingovy útesy).
+Po přizpůsobení formátu se výsledky dramaticky zlepšily:
+Fixed-Point na Sphere ze 163 na 5·10⁻⁷, na Rosenbrocku z 5·10⁵ na 63, na
+Schwefelu z 967 na 524. BCD-tuned zlepšil Sphere (97 → 0,47) i Rosenbrock
+(3·10⁵ → 5·10⁴); Schwefel je beze změny (formát byl už správný). Zlepšení
+je tedy z velké části zásluhou volby formátu, ne kódování samotného.
+BCD-tuned zůstává na Rosenbrocku slabé, protože pro rozsah do 10 potřebuje
+2 celé číslice a desítková číslice je smysluplná jen pro 0 a 1 — 89 % genů
+je oříznuto na horní mez 10. BCD navíc plýtvá kódovým prostorem (nibble > 9 je
+neplatný) a sousední hodnoty (např. 0,9999 → 1,0000) se liší ve všech bitech.
+
+**Sphere.** Vyhrává IEEE 754 (~10⁻⁷⁸), ale kvůli vlastnosti kódování, ne
+kvůli kvalitě GA: v float32 vede ~46 % náhodných genů na téměř nulovou hodnotu
 (malý exponent) a každý bit exponentu mění řád hodnoty, takže GA „zmenšuje“
-čísla po řádech. Optimum Sphere leží v 0, kam kódování samo „přitahuje“. U
-Fixed-Pointu a BCD je to opačně: 10 bitů celé části (±1023), resp. 3 celé
-číslice, jsou pro rozsah ±5,12 příliš široké, takže 99 % náhodných genů se
-ořízne na hranici a počáteční populace je prakticky celá v rozích. Ke správné
-hodnotě je pak nutné trefit horní bity (znaménko, celá část), které mění
-hodnotu skokem; mutace těchto bitů a jednobodové křížení dobré řešení často
-rozbíjí (Hammingovy útesy). Výsledek (~10²) tedy z velké části odráží špatné
-přizpůsobení pevného formátu doméně, ne nutně slabost kódování obecně. Real GA
-pracuje přímo s hodnotami, Gaussova mutace dělá malé kroky, a proto s malou
-sigma dobře konverguje (6·10⁻⁴, při sigma 0,01 až 4·10⁻⁵); uniformní mutace
-konverguje hůř (0,025), protože nová hodnota z celého rozsahu jen vzácně
-zlepší téměř optimálního jedince.
+čísla po řádech. Optimum Sphere leží v 0, kam kódování samo „přitahuje“.
+Fixed-Point-tuned (5·10⁻⁷) je překvapivě lepší než Real-Gauss (6·10⁻⁴):
+Gaussova mutace s pevným sigma = 5 % rozsahu nemůže zpřesňovat pod tuto
+úroveň, kdežto u fixed-pointu mutace nízkých bitů jemně dolaďuje hodnotu a
+mutace různých bitů dává kroky všech velikostí najednou (od 2⁻²⁸ po jednotky).
+Při sigma 0,01 dosahuje Real-Gauss 4·10⁻⁵, stále hůř než Fixed-Point-tuned.
+Uniformní mutace konverguje hůř (0,025), protože nová hodnota z celého rozsahu
+jen vzácně zlepší téměř optimálního jedince.
 
 **Rosenbrock.** Úzké zakřivené údolí s optimem v (1,…,1); geny jsou provázané.
-Fixed-Point a BCD dopadly velmi špatně (10⁵) ze stejného důvodu jako u Sphere:
-geny jsou většinou na hranici rozsahu [-5, 10], kde má Rosenbrock obrovské
-hodnoty. IEEE 754 se za ~300 ohodnocení dostane na ≈ 9 a pak se přestane
-zlepšovat (std 0,07). Hodnota odpovídá f(0,…,0) = 9, tedy řešení s geny téměř v nule
-(přímo jsem to neověřoval); k dalšímu zlepšení by bylo třeba přesně doladit
-souřadnice k 1, což kódování při jednobodovém křížení a bit-flip mutaci
-nenajde. Real GA je pomalejší,
-ale některým během se do údolí dostane (nejlepší 4,3, medián 8,1 u Gauss), jiným
-ne (průměr 33 vs. 49 u Uniform, velký rozptyl). Podle průměru je tak nejlepší
-IEEE 754 (8,9), podle mediánu Real-Gauss (8,1) — rozdíl je malý.
+IEEE 754 uvízne na ≈ 9 (viz výše; std 0,07). Real GA je pomalejší, ale
+některým během se do údolí dostane (nejlepší 4,3, medián 8,1 u Gauss), jiným
+ne (průměr 33 vs. 49 u Uniform, velký rozptyl). Podle průměru je tak
+nejlepší IEEE 754 (8,9), podle mediánu Real-Gauss (8,1) — rozdíl je malý.
+Fixed-Point-tuned (průměr 63) je srovnatelný s real-valued variantami.
 
 **Schwefel.** Silně multimodální funkce, optimum je blízko hranice rozsahu
 (≈ 421). Real-Uniform vyhrává výrazně (≈ 15): náhodný skok na libovolnou hodnotu
@@ -119,17 +148,16 @@ je nezávislé zkoušení každé souřadnice a protože je Schwefel separabiln�
 křížení skládá dobré souřadnice z různých jedinců. Gaussova mutace zůstává
 v okolí rodiče a uvízne v lokálním minimu (386). IEEE 754 je nejhorší (2274):
 téměř nikdy netrefí oblast 300–500 (0,2 % genů), protože hodnoty jsou buď
-≈ 0, nebo oříznuté na hranici. Fixed-Point a BCD mají v této oblasti 10–15 %
-náhodných genů a hranici ořezávají méně, proto jsou lepší (967 a 545).
+≈ 0, nebo oříznuté na hranici. Fixed-Point (524–967) a BCD (545) mají v této
+oblasti 10–20 % náhodných genů, proto jsou lepší, ale hůř než Real-Uniform:
+změna horních bitů je skok a nízké bity doladění neřeší problém lokálních minim.
 
 **Celkově.** Neexistuje univerzálně nejlepší varianta (no free lunch): výkon
 závisí na shodě kódování/operátorů se strukturou funkce. Real-valued GA je
-spolehlivý napříč funkcemi (na Schwefelu nejlepší Uniform, na Rosenbrocku
-druhý resp. v mediánu první Gauss, na Sphere s velkým náskokem před
-Fixed-Point a BCD), ale na Sphere ho výrazně poráží IEEE 754. Binární kódování
-trpí nerovnoměrným významem bitů a Hammingovými útesy; IEEE 754 je silně
-zkreslené k nule, což pomáhá u funkcí s optimem v nule a škodí u Schwefela.
-Fixed-Point a BCD by v lépe přizpůsobeném formátu (méně bitů celé části pro
-malé rozsahy) pravděpodobně dopadly lépe; to jsem neověřoval. Výsledky jsou
-z 10 běhů na jednom nastavení parametrů, takže rozdíly mezi blízkými variantami
-nejsou statisticky podložené.
+spolehlivý napříč funkcemi (nejlepší Uniform na Schwefelu, Gauss na Rosenbrocku
+v mediánu), ale na Sphere ho poráží IEEE 754 i správně nastavený Fixed-Point.
+Binární kódování je silně závislé na návrhu formátu: špatně zvolené dělení
+bitů zhorší výsledek o několik řádů, IEEE 754 je zkreslené k nule (pomáhá u
+funkcí s optimem v nule, škodí u Schwefela). Výsledky jsou z 10 běhů na
+jednom nastavení parametrů, takže rozdíly mezi blízkými variantami nejsou
+statisticky podložené.

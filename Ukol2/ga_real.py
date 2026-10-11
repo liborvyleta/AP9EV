@@ -107,10 +107,40 @@ def decode_bcd(bits: np.ndarray, lo: float, hi: float) -> np.ndarray:
     return _sanitize(sign * magnitude, lo, hi)
 
 
+def decode_fixed_point_tuned(bits: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """Fixed-point s dělením bitů přizpůsobeným rozsahu úlohy.
+
+    1 bit znaménko, `int_bits` = nejmenší počet bitů pro celou část max(|lo|, |hi|),
+    zbylé bity (31 - int_bits) desetinná část.
+    """
+    int_bits = int(np.ceil(np.log2(max(abs(lo), abs(hi)) + 1.0)))
+    frac_bits = BITS_PER_DIM - 1 - int_bits
+    sign = np.where(bits[..., 0] == 1, -1.0, 1.0)
+    integer = _bits_to_uint(bits[..., 1 : 1 + int_bits]).astype(np.float64)
+    fraction = _bits_to_uint(bits[..., 1 + int_bits :]).astype(np.float64) / 2.0**frac_bits
+    return _sanitize(sign * (integer + fraction), lo, hi)
+
+
+def decode_bcd_tuned(bits: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """BCD s dělením číslic přizpůsobeným rozsahu: [znaménko] [celé] [desetinné].
+
+    Počet celých číslic odpovídá max(|lo|, |hi|), zbylé číslice jsou desetinné.
+    """
+    int_digits = len(str(int(max(abs(lo), abs(hi)))))
+    nibbles = bits.reshape(*bits.shape[:-1], 8, 4)
+    digits = (nibbles * np.array([8, 4, 2, 1])).sum(axis=-1) % 10
+    sign = np.where(digits[..., 0] >= 5, -1.0, 1.0)
+    exponents = 10.0 ** np.arange(int_digits - 1, int_digits - 8, -1)
+    magnitude = (digits[..., 1:] * exponents).sum(axis=-1)
+    return _sanitize(sign * magnitude, lo, hi)
+
+
 DECODERS = {
     "IEEE754": decode_ieee754,
     "FixedPoint": decode_fixed_point,
     "BCD": decode_bcd,
+    "FixedPoint-tuned": decode_fixed_point_tuned,
+    "BCD-tuned": decode_bcd_tuned,
 }
 
 # ---------------------------------------------------------------------------
