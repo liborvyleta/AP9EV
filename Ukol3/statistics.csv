@@ -1,0 +1,10 @@
+function,variant,best,mean,std,reached_target,mean_gens_to_target,generations
+Sphere,DE/rand/1/bin,4.72293e-22,2.81787e-21,1.9586e-21,10/10,167.3,500
+Sphere,DE/best/1/bin,3.85447e-48,0.00138083,0.00412299,7/10,46.1429,500
+Sphere,jDE,1.10147e-25,1.81747e-24,1.96824e-24,10/10,146.4,500
+Rosenbrock,DE/rand/1/bin,2.6511,3.66766,0.874514,0/10,nan,500
+Rosenbrock,DE/best/1/bin,4.24484,6.80822,1.72285,0/10,nan,500
+Rosenbrock,jDE,1.84629,3.04454,0.740966,0/10,nan,500
+Rastrigin,DE/rand/1/bin,14.9144,18.0295,2.37963,0/10,nan,500
+Rastrigin,DE/best/1/bin,4.98181,10.5479,3.93312,0/10,nan,500
+Rastrigin,jDE,0,7.71649e-13,9.03101e-13,10/10,371.3,500
